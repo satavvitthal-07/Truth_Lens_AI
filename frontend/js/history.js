@@ -43,8 +43,13 @@ async function loadHistory() {
       const file = textCell(row, item.display_name);
       const report = document.createElement('a');
       report.href = `result.html?id=${encodeURIComponent(item.analysis_id)}`;
-      report.textContent = item.display_name || 'Open report';
-      file.replaceChildren(report);
+      report.textContent = item.display_name || 'Open report and preview';
+      const mediaStatus = document.createElement('span');
+      mediaStatus.className = 'small';
+      mediaStatus.textContent = item.media_url
+        ? (item.media_available ? 'Preview available' : 'Saved media missing')
+        : 'No media retained';
+      file.replaceChildren(report, mediaStatus);
       textCell(row, item.media_type);
       textCell(row, item.prediction);
       textCell(row, typeof item.score === 'number' ? item.score.toFixed(4) : '—');
@@ -55,8 +60,9 @@ async function loadHistory() {
       removeButton.type = 'button';
       removeButton.className = 'button button-quiet';
       removeButton.textContent = 'Delete';
-      removeButton.setAttribute('aria-label', `Delete analysis for ${item.display_name}`);
+      removeButton.setAttribute('aria-label', `Delete analysis and saved media for ${item.display_name}`);
       removeButton.addEventListener('click', async () => {
+        if (!window.confirm(`Delete the analysis and its retained media for "${item.display_name}"?`)) return;
         removeButton.disabled = true;
         try {
           await apiRequest(`/history/${encodeURIComponent(item.analysis_id)}`, { method: 'DELETE' });

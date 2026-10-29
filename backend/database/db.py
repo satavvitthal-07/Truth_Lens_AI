@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS analyses (
     error_message TEXT,
     processing_ms INTEGER NOT NULL CHECK (processing_ms >= 0),
     created_at TEXT NOT NULL,
-    frames_json TEXT
+    frames_json TEXT,
+    media_filename TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC);
 """
@@ -61,6 +62,8 @@ def init_db(app) -> None:
             connection.execute("ALTER TABLE analyses ADD COLUMN scores_json TEXT")
         if "error_message" not in columns:
             connection.execute("ALTER TABLE analyses ADD COLUMN error_message TEXT")
+        if "media_filename" not in columns:
+            connection.execute("ALTER TABLE analyses ADD COLUMN media_filename TEXT")
         connection.commit()
     finally:
         connection.close()

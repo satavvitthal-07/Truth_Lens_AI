@@ -46,8 +46,22 @@ def detector_status() -> dict:
         "configured": configured,
         "model_id": config["MODEL_ID"] if configured else None,
         "revision": config["MODEL_REVISION"] if configured else None,
-        "message": None if configured else "No verified detector is configured.",
+        "message": (
+            None
+            if configured and _pipeline is not None
+            else (
+                "The configured detector has not loaded. Check backend logs and AI dependencies."
+                if configured
+                else "No verified detector is configured."
+            )
+        ),
     }
+
+
+def initialize_detector() -> None:
+    config = current_app.config
+    if config["MODEL_ID"] and config["MODEL_VERIFIED"] and config["AI_LABELS"]:
+        _configured_pipeline()
 
 
 def classify_image(image) -> dict:

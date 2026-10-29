@@ -16,10 +16,16 @@ def save_uploaded_file(media_type: str):
     extension = Path(upload.filename).suffix.lower()
     if media_type == "image":
         allowed = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
-        max_bytes = current_app.config["IMAGE_MAX_BYTES"]
+        max_bytes = min(
+            current_app.config["IMAGE_MAX_BYTES"],
+            current_app.config["MAX_UPLOAD_BYTES"],
+        )
     else:
         allowed = {".mp4": "video/mp4"}
-        max_bytes = current_app.config["VIDEO_MAX_BYTES"]
+        max_bytes = min(
+            current_app.config["VIDEO_MAX_BYTES"],
+            current_app.config["MAX_UPLOAD_BYTES"],
+        )
 
     if extension not in allowed:
         raise ApiError(f"Unsupported {media_type} file extension.", 415, "unsupported_format")

@@ -1,9 +1,17 @@
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
+from flask import current_app
+
 from backend.database.db import get_db
+from backend.services.media_storage import resolve_media_path
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_analysis(
@@ -21,6 +29,7 @@ def create_analysis(
     processing_ms: int,
     frames: list[dict] | None = None,
     error_message: str | None = None,
+    media_filename: str | None = None,
 ) -> dict:
     analysis = {
         "analysis_id": str(uuid4()),
@@ -35,6 +44,7 @@ def create_analysis(
         "processing_ms": processing_ms,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "frames": frames,
+        "media_filename": media_filename,
     }
     db = get_db()
     db.execute(
@@ -42,8 +52,9 @@ def create_analysis(
         INSERT INTO analyses (
             analysis_id, display_name, media_type, file_size, model_id, model_revision,
             top_label, scores_json,
-            prediction, score, status, error_message, processing_ms, created_at, frames_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            prediction, score, status, error_message, processing_ms, created_at, frames_json,
+            media_filename
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             analysis["analysis_id"],
@@ -61,6 +72,7 @@ def create_analysis(
             analysis["processing_ms"],
             analysis["created_at"],
             json.dumps(frames) if frames is not None else None,
+            media_filename,
         ),
     )
     db.commit()
@@ -92,11 +104,55 @@ def get_analysis(analysis_id: str) -> dict | None:
 
 
 def delete_analysis(analysis_id: str) -> bool:
-    cursor = get_db().execute(
-        "DELETE FROM analyses WHERE analysis_id = ?", (analysis_id,)
-    )
-    get_db().commit()
-    return cursor.rowcount > 0
+    db = get_db()
+    tombstone: Path | None = None
+    original_path: Path | None = None
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        row = db.execute(
+            "SELECT media_filename, media_type FROM analyses WHERE analysis_id = ?",
+            (analysis_id,),
+        ).fetchone()
+        if row is None:
+            db.rollback()
+            return False
+
+        filename = row["media_filename"]
+        if filename:
+            reference = db.execute(
+                "SELECT COUNT(*) FROM analyses WHERE media_filename = ?",
+                (filename,),
+            ).fetchone()[0]
+            if reference == 1:
+                try:
+                    original_path = resolve_media_path(
+                        filename,
+                        row["media_type"],
+                        Path(current_app.config["UPLOAD_DIR"]),
+                    )
+                except (FileNotFoundError, ValueError):
+                    original_path = None
+                if original_path is not None:
+                    tombstone = original_path.with_name(f".{uuid4().hex}.deleting")
+                    original_path.replace(tombstone)
+
+        db.execute("DELETE FROM analyses WHERE analysis_id = ?", (analysis_id,))
+        db.commit()
+    except Exception:
+        db.rollback()
+        if tombstone is not None and original_path is not None and tombstone.exists():
+            try:
+                tombstone.replace(original_path)
+            except OSError:
+                logger.exception("Could not restore media after analysis deletion failed")
+        raise
+
+    if tombstone is not None:
+        try:
+            tombstone.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("Analysis was deleted but its media cleanup failed")
+    return True
 
 
 def dashboard_stats() -> dict:

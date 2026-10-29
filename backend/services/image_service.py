@@ -40,6 +40,11 @@ def _open_valid_image(path: Path, expected_mime: str) -> Image.Image:
         raise ApiError("The image is malformed or cannot be decoded safely.", 422, "invalid_image") from error
 
 
+def validate_image(path: Path, expected_mime: str) -> None:
+    image = _open_valid_image(path, expected_mime)
+    image.close()
+
+
 def analyze_image(path: Path, expected_mime: str) -> dict:
     image = _open_valid_image(path, expected_mime)
     try:

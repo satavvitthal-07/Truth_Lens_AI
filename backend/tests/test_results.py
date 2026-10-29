@@ -41,7 +41,13 @@ def test_prediction_response_history_and_delete(app, client, monkeypatch):
     assert analysis["model_revision"] == "a1b2c3"
     assert analysis["display_name"] == "sample.png"
     assert len(temp_paths) == 1
-    assert not temp_paths[0].exists()
+    assert temp_paths[0].exists()
+    assert temp_paths[0].parent == app.config["UPLOAD_DIR"]
+    assert analysis["media_available"] is True
+    saved_media = client.get(f"/api{analysis['media_url']}")
+    assert saved_media.status_code == 200
+    assert saved_media.data == png_bytes()
+    saved_media.close()
 
     history = client.get("/api/history").get_json()["analyses"]
     assert len(history) == 1

@@ -104,7 +104,7 @@ form.addEventListener('submit', async (event) => {
   if (submitting || !fileInput.files?.[0]) return;
   submitting = true;
   submitButton.disabled = true;
-  submitButton.innerHTML = '<span class="loading"><span class="spinner" aria-hidden="true"></span>Processing locally…</span>';
+  submitButton.innerHTML = '<span class="loading"><span class="spinner" aria-hidden="true"></span>Uploading and analyzing…</span>';
   if (processingNote) {
     processingNote.textContent = isVideoPage
       ? 'Sampling a bounded set of frames. Processing time depends on local model and hardware.'
@@ -119,14 +119,10 @@ form.addEventListener('submit', async (event) => {
   const route = isVideoPage ? '/detect/video' : '/detect/image';
   try {
     const result = await apiRequest(route, { method: 'POST', body, signal: controller.signal });
-    sessionStorage.setItem('truthlens:last-analysis', JSON.stringify(result));
-    if (previewUrl) sessionStorage.setItem('truthlens:preview-url', previewUrl);
     window.location.assign(`result.html?id=${encodeURIComponent(result.analysis_id)}`);
   } catch (error) {
     const analysisId = error.payload?.analysis_id;
     if (analysisId) {
-      sessionStorage.setItem('truthlens:last-analysis', JSON.stringify(error.payload));
-      if (previewUrl) sessionStorage.setItem('truthlens:preview-url', previewUrl);
       window.location.assign(`result.html?id=${encodeURIComponent(analysisId)}`);
       return;
     }
@@ -143,5 +139,5 @@ form.addEventListener('submit', async (event) => {
 });
 
 window.addEventListener('pagehide', () => {
-  if (previewUrl && !sessionStorage.getItem('truthlens:preview-url')) URL.revokeObjectURL(previewUrl);
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
 });

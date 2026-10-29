@@ -74,3 +74,11 @@ def test_additive_migration_preserves_existing_analysis(tmp_path):
     assert result["analysis_id"] == "existing-analysis"
     assert result["prediction"] == "Detection unavailable"
     assert result["error_message"] is None
+    assert result["media_url"] is None
+    assert result["media_available"] is False
+
+    with sqlite3.connect(database_path) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(analyses)")
+        }
+    assert "media_filename" in columns

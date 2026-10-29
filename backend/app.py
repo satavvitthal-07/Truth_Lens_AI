@@ -2,12 +2,13 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request
 
+from backend.ai.model_adapter import initialize_detector
 from backend.config import Config
 from backend.database.db import init_db
 from backend.routes.detection import detection
 from backend.routes.health import health
 from backend.routes.history import history
-from backend.utils.errors import ApiError
+from backend.utils.errors import ApiError, DetectorUnavailable
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -16,7 +17,15 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.config.from_object(Config)
     if test_config:
         app.config.update(test_config)
+    app.config["MAX_CONTENT_LENGTH"] = app.config["MAX_UPLOAD_BYTES"] + 1024 * 1024
     init_db(app)
+
+    if not app.config.get("TESTING"):
+        with app.app_context():
+            try:
+                initialize_detector()
+            except DetectorUnavailable as error:
+                app.logger.error("Configured detector failed to load during startup: %s", error)
 
     app.register_blueprint(health)
     app.register_blueprint(detection)

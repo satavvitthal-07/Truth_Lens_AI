@@ -16,37 +16,52 @@ def _validate_video_signature(path: Path) -> None:
         raise ApiError("The file does not have a supported MP4 container signature.", 415, "signature_mismatch")
 
 
+def _read_video_metadata(capture) -> tuple[float, float]:
+    fps = capture.get(cv2.CAP_PROP_FPS)
+    frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+    raw_width = capture.get(cv2.CAP_PROP_FRAME_WIDTH)
+    raw_height = capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    if (
+        not math.isfinite(fps)
+        or fps <= 0
+        or not math.isfinite(frame_count)
+        or frame_count < 1
+        or not math.isfinite(raw_width)
+        or not math.isfinite(raw_height)
+        or raw_width <= 0
+        or raw_height <= 0
+    ):
+        raise ApiError("Video metadata is unreadable or invalid.", 422, "invalid_video_metadata")
+    width = int(raw_width)
+    height = int(raw_height)
+    duration = frame_count / fps
+    if duration > current_app.config["VIDEO_MAX_SECONDS"]:
+        raise ApiError("Video duration exceeds the 60-second limit.", 413, "video_too_long")
+    if max(width, height) > current_app.config["VIDEO_MAX_DIMENSION"]:
+        raise ApiError("Video dimensions exceed the supported processing limit.", 413, "video_too_large")
+    if frame_count > current_app.config["VIDEO_MAX_DECODE_FRAMES"]:
+        raise ApiError("Video contains too many frames for the configured processing limit.", 413, "too_many_frames")
+    return fps, frame_count
+
+
+def validate_video(path: Path) -> None:
+    _validate_video_signature(path)
+    capture = cv2.VideoCapture(str(path))
+    try:
+        if not capture.isOpened():
+            raise ApiError("OpenCV could not open this MP4 video.", 422, "invalid_video")
+        _read_video_metadata(capture)
+    finally:
+        capture.release()
+
+
 def analyze_video(path: Path) -> dict:
     _validate_video_signature(path)
     capture = cv2.VideoCapture(str(path))
     try:
         if not capture.isOpened():
             raise ApiError("OpenCV could not open this MP4 video.", 422, "invalid_video")
-
-        fps = capture.get(cv2.CAP_PROP_FPS)
-        frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
-        raw_width = capture.get(cv2.CAP_PROP_FRAME_WIDTH)
-        raw_height = capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
-        if (
-            not math.isfinite(fps)
-            or fps <= 0
-            or not math.isfinite(frame_count)
-            or frame_count < 1
-            or not math.isfinite(raw_width)
-            or not math.isfinite(raw_height)
-            or raw_width <= 0
-            or raw_height <= 0
-        ):
-            raise ApiError("Video metadata is unreadable or invalid.", 422, "invalid_video_metadata")
-        width = int(raw_width)
-        height = int(raw_height)
-        duration = frame_count / fps
-        if duration > current_app.config["VIDEO_MAX_SECONDS"]:
-            raise ApiError("Video duration exceeds the 60-second limit.", 413, "video_too_long")
-        if max(width, height) > current_app.config["VIDEO_MAX_DIMENSION"]:
-            raise ApiError("Video dimensions exceed the supported processing limit.", 413, "video_too_large")
-        if frame_count > current_app.config["VIDEO_MAX_DECODE_FRAMES"]:
-            raise ApiError("Video contains too many frames for the configured processing limit.", 413, "too_many_frames")
+        fps, frame_count = _read_video_metadata(capture)
 
         sample_count = min(
             int(frame_count),

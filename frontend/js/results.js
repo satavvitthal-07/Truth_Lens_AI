@@ -1,4 +1,4 @@
-import { apiRequest, formatBytes, formatDate } from './api.js';
+import { API_BASE, apiRequest, formatBytes, formatDate } from './api.js';
 import './app.js';
 
 const content = document.querySelector('#report-content');
@@ -69,6 +69,45 @@ function renderReport(analysis) {
   top.append(details);
   content.append(top);
 
+  const mediaCard = element('section', 'card card-body');
+  mediaCard.style.marginTop = '20px';
+  mediaCard.append(element('h3', '', 'Saved media'));
+  if (!analysis.media_url) {
+    mediaCard.append(element('p', 'small', 'No media was retained for this analysis.'));
+  } else if (!analysis.media_available) {
+    mediaCard.append(element('p', 'small', 'The saved media file is missing or unavailable.'));
+  } else {
+    const mediaUrl = `${API_BASE}${analysis.media_url}`;
+    const mediaError = element('p', 'small');
+    mediaError.hidden = true;
+    mediaError.setAttribute('role', 'status');
+    if (analysis.media_type === 'image') {
+      const image = element('img', 'media-preview');
+      image.src = mediaUrl;
+      image.alt = `Saved uploaded image: ${analysis.display_name || 'image'}`;
+      image.loading = 'lazy';
+      image.addEventListener('error', () => {
+        mediaError.textContent = 'The saved image could not be loaded. It may have been removed from storage.';
+        mediaError.hidden = false;
+      });
+      mediaCard.append(image, mediaError);
+    } else if (analysis.media_type === 'video') {
+      const video = element('video', 'media-preview');
+      video.src = mediaUrl;
+      video.controls = true;
+      video.preload = 'metadata';
+      video.setAttribute('aria-label', `Saved uploaded video: ${analysis.display_name || 'video'}`);
+      video.addEventListener('error', () => {
+        mediaError.textContent = 'The saved video could not be played. It may have been removed from storage.';
+        mediaError.hidden = false;
+      });
+      mediaCard.append(video, mediaError);
+    } else {
+      mediaCard.append(element('p', 'small', 'This media type cannot be previewed.'));
+    }
+  }
+  content.append(mediaCard);
+
   if (analysis.media_type === 'video' && Array.isArray(analysis.frames)) {
     const frameCard = element('section', 'card card-body');
     frameCard.style.marginTop = '20px';
@@ -113,27 +152,6 @@ function renderReport(analysis) {
     content.append(scoreCard);
   }
 
-  const localPreview = sessionStorage.getItem('truthlens:preview-url');
-  if (localPreview && (analysis.media_type === 'image' || analysis.media_type === 'video')) {
-    const previewCard = element('section', 'card card-body');
-    previewCard.style.marginTop = '20px';
-    previewCard.append(element('h3', '', 'Local preview'));
-    if (analysis.media_type === 'image') {
-      const image = element('img', 'media-preview');
-      image.src = localPreview;
-      image.alt = 'Image selected for the current analysis; preview is held only in this browser session.';
-      previewCard.append(image);
-    } else {
-      const video = element('video', 'media-preview');
-      video.src = localPreview;
-      video.controls = true;
-      video.preload = 'metadata';
-      video.setAttribute('aria-label', 'Video selected for the current analysis; preview is held only in this browser session.');
-      previewCard.append(video);
-    }
-    content.append(previewCard);
-  }
-
   const actions = element('div');
   actions.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;margin-top:24px';
   const retry = element('a', 'button button-primary', 'Analyze another file');
@@ -153,9 +171,7 @@ async function loadReport() {
     return;
   }
   try {
-    const cached = JSON.parse(sessionStorage.getItem('truthlens:last-analysis') || 'null');
-    if (cached?.analysis_id === id) renderReport(cached);
-    else renderReport(await apiRequest(`/history/${encodeURIComponent(id)}`));
+    renderReport(await apiRequest(`/history/${encodeURIComponent(id)}`));
   } catch (error) {
     errorBox.textContent = error.message;
     errorBox.classList.add('visible');
